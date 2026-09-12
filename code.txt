@@ -1,0 +1,755 @@
+/************  ESP32 – CENTRAL RECEIVER + WebServer (No Clock)  ************/
+#include <SPI.h>
+#include <LoRa.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+
+// ---------- PINS ----------
+#define LORA_SS   5
+#define LORA_RST  14
+#define LORA_DIO0 2
+#define PIN_BUZZ  25
+#define LED_R     26
+#define LED_Y     27
+#define LED_G     32  
+#define PIEZO_PIN 33  
+
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+// ---------- STATE ----------
+bool loraOk = false;
+bool anyAlarm = false;
+
+enum Hazard { HZ_SMOKE, HZ_METHANE, HZ_CO, HZ_COUNT };
+bool active[3][HZ_COUNT];     
+unsigned long lastAlarmTime[3][HZ_COUNT];
+unsigned long lastClearTime[3][HZ_COUNT];
+
+const char* labelFa[HZ_COUNT] = {"دود","متان","مونوکسید کربن"};
+
+// ---------- WiFi ----------
+const char* ap_ssid = "ImenYar-AP";
+const char* ap_password = "12345678";
+WebServer server(80);
+
+// ---------- Buzzer ----------
+unsigned long buzzTimer = 0;
+bool buzzOnPhase = false;
+const unsigned long BZ_ON  = 180;
+const unsigned long BZ_OFF = 650;
+
+
+struct SensorData {
+  int id;
+  String name;
+  int quantity;
+  String status;
+};
+
+
+SensorData sensors[6] = {
+  {1, "smoke", 0, "green"},
+  {1, "methane", 0, "green"},
+  {1, "co", 0, "green"},
+  {2, "smoke", 0, "green"},
+  {2, "methane", 0, "green"},
+  {2, "co", 0, "green"}
+};
+
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("U1:");
+  
+  // وضعیت واحد 1
+  bool unit1Alarm = false;
+  for(int i = 0; i < 3; i++) {
+    if(sensors[i].status == "red") {
+      unit1Alarm = true;
+      break;
+    }
+  }
+  lcd.print(unit1Alarm ? "ALARM" : "OK");
+  
+  lcd.setCursor(0,1);
+  lcd.print("U2:");
+  
+  // وضعیت واحد 2
+  bool unit2Alarm = false;
+  for(int i = 3; i < 6; i++) {
+    if(sensors[i].status == "red") {
+      unit2Alarm = true;
+      break;
+    }
+  }
+  lcd.print(unit2Alarm ? "ALARM" : "OK");
+}
+
+void buzzerService(){
+  if (!anyAlarm) { 
+    noTone(PIN_BUZZ); 
+    noTone(PIEZO_PIN);
+    buzzOnPhase=false; 
+    return; 
+  }
+  unsigned long now = millis();
+  if (!buzzOnPhase && now - buzzTimer >= BZ_OFF) {
+    tone(PIEZO_PIN, 1500);
+    buzzOnPhase = true;
+    buzzTimer = now;
+  } else if (buzzOnPhase && now - buzzTimer >= BZ_ON) {
+    noTone(PIEZO_PIN);
+    buzzOnPhase = false;
+    buzzTimer = now;
+  }
+}
+
+void applyLed(){
+  if (!loraOk) {
+    digitalWrite(LED_Y, HIGH);
+    digitalWrite(LED_G, LOW);
+    digitalWrite(LED_R, LOW);
+    return;
+  }
+  digitalWrite(LED_Y, LOW);
+  if (anyAlarm){
+    digitalWrite(LED_R, HIGH);
+  } else {
+    digitalWrite(LED_R, LOW);
+  }
+}
+
+Hazard parseHazard(const String &s){
+  if (s == "SMOKE")   return HZ_SMOKE;
+  if (s == "METHANE") return HZ_METHANE;
+  if (s == "CO")      return HZ_CO;
+  return HZ_SMOKE;
+}
+
+String hazardToSensorName(Hazard hz) {
+  switch(hz) {
+    case HZ_SMOKE: return "smoke";
+    case HZ_METHANE: return "methane";
+    case HZ_CO: return "co";
+    default: return "";
+  }
+}
+
+void updateSensorData(uint8_t unit, Hazard hz, bool isActive) {
+  String sensorName = hazardToSensorName(hz);
+  
+  for(int i = 0; i < 6; i++) {
+    if(sensors[i].id == unit && sensors[i].name == sensorName) {
+      sensors[i].quantity = isActive ? 1 : 0;
+      sensors[i].status = isActive ? "red" : "green";
+      
+      if (!isActive) {
+        lastClearTime[unit][hz] = millis();
+      }
+      break;
+    }
+  }
+  updateLCD(); 
+}
+
+String getSensorStatusWithWarning(uint8_t unit, Hazard hz) {
+  int sensorIndex = (unit - 1) * 3 + hz;
+  if (sensors[sensorIndex].status == "green") {
+    if (millis() - lastClearTime[unit][hz] < 10000) {
+      return "orange";
+    }
+  }
+  return sensors[sensorIndex].status;
+}
+
+void processMessage(const String &msg){
+  int p1 = msg.indexOf(':');
+  int p2 = msg.indexOf(':', p1+1);
+  if (p1<0 || p2<0) return;
+
+  String prefix = msg.substring(0, p1);         
+  String kind   = msg.substring(p1+1, p2);      
+  String type   = msg.substring(p2+1);          
+
+  uint8_t unit = 0;
+  if (prefix.startsWith("UNIT")) {
+    unit = (uint8_t)prefix.substring(4).toInt();
+  }
+  if (unit < 1 || unit > 2) return;
+
+  Hazard hz = parseHazard(type);
+
+  if (kind == "ALARM") {
+    active[unit][hz] = true;
+    lastAlarmTime[unit][hz] = millis();
+    updateSensorData(unit, hz, true);
+
+    if (hz == HZ_METHANE) {
+      digitalWrite(LED_G, HIGH);
+    }
+
+  } else if (kind == "CLEAR") {
+    active[unit][hz] = false;
+    lastAlarmTime[unit][hz] = millis();
+    updateSensorData(unit, hz, false);
+
+    if (hz == HZ_METHANE) {
+      digitalWrite(LED_G, LOW);
+    }
+  }
+
+  anyAlarm = false;
+  for (uint8_t u=1; u<=2; u++){
+    for (int h=0; h<HZ_COUNT; h++){
+      if (active[u][h]) { anyAlarm = true; break; }
+    }
+    if (anyAlarm) break;
+  }
+
+  applyLed();
+}
+
+// ---------- Web Page ----------
+String buildPage() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سیستم امنیتی ایمن‌یار</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Tahoma, sans-serif;
+            background: linear-gradient(180deg,#f4f7fb,#eef3f8);
+            direction: rtl;
+            color: #222;
+            min-height: 100vh;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            gap: 10px;
+            max-width: 1200px;
+            margin: 8px auto;
+        }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo i { font-size: 34px; color: #ff7a45; }
+        .logo h1 { margin: 0; font-size: 20px; font-weight: 800; }
+        .header-right .update-note { color: #666; font-size: 13px; }
+        
+        .dashboard {
+            display: flex;
+            gap: 18px;
+            padding: 10px;
+            max-width: 1200px;
+            margin: 0 auto 40px;
+        }
+        
+        .alerts-box, .contacts-box {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(17,24,39,0.06);
+            width: 50%;
+            background: #fff;
+        }
+        
+        .alerts-box { 
+            overflow-y: auto;
+            max-height: 600px;
+        }
+        
+        .unit-alert-card {
+            background: linear-gradient(180deg,#ffffff,#fbfbfc);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: transform .22s cubic-bezier(.2,.9,.3,1), box-shadow .22s;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .unit-alert-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+        }
+        
+        .unit-alert-card.red {
+            border-color: #F44336;
+            background: linear-gradient(180deg,#fff5f5,#ffecec);
+        }
+        
+        .unit-alert-card.green {
+            border-color: #42A948;
+            background: linear-gradient(180deg,#f5fff7,#ecffef);
+        }
+        
+        .unit-alert-card.orange {
+            border-color: #FF9800;
+            background: linear-gradient(180deg,#fff5e6,#ffeccc);
+        }
+        
+        .unit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .unit-id {
+            font-size: 18px;
+            font-weight: 800;
+            color: #1565C0;
+        }
+        
+        .unit-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        
+        .unit-status.red {
+            background: #F44336;
+            color: white;
+        }
+        
+        .unit-status.green {
+            background: #42A948;
+            color: white;
+        }
+        
+        .unit-status.orange {
+            background: #FF9800;
+            color: white;
+        }
+        
+        .unit-sensors {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        
+        .sensor-module {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .sensor-module.red {
+            border-color: #F44336;
+            background: linear-gradient(180deg,#fff5f5,#ffecec);
+        }
+        
+        .sensor-module.green {
+            border-color: #42A948;
+            background: linear-gradient(180deg,#f5fff7,#ecffef);
+        }
+        
+        .sensor-module.orange {
+            border-color: #FF9800;
+            background: linear-gradient(180deg,#fff5e6,#ffeccc);
+        }
+        
+        .sensor-icon {
+            font-size: 20px;
+            margin-bottom: 5px;
+            color: #444;
+        }
+        
+        .sensor-name {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+        
+        .sensor-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        
+        .sensor-status.red {
+            background: #F44336;
+            color: white;
+        }
+        
+        .sensor-status.green {
+            background: #42A948;
+            color: white;
+        }
+        
+        .sensor-status.orange {
+            background: #FF9800;
+            color: white;
+        }
+        
+        .default-message {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            text-align: center;
+        }
+        
+        .default-message i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #aaa;
+        }
+        
+        .default-message p {
+            margin: 0;
+            font-size: 16px;
+        }
+        
+        .unit-details {
+            width: 100%;
+        }
+        
+        .unit-details h3 {
+            margin: 0 0 20px;
+            font-size: 20px;
+            text-align: center;
+            color: #1565C0;
+        }
+        
+        .contact-section {
+            margin-top: 25px;
+        }
+        
+        .contact-section h4 {
+            margin: 0 0 15px;
+            font-size: 18px;
+            color: #333;
+        }
+        
+        .contact-numbers {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .phone {
+            text-align: right;
+            padding: 12px;
+            background: #eef7ff;
+            border-radius: 8px;
+            cursor: pointer;
+            display: block;
+            transition: background 0.2s;
+            margin: 0;
+        }
+        
+        .phone:hover {
+            background: #d8ebff;
+        }
+        
+        @media (max-width: 900px) {
+            .dashboard {
+                flex-direction: column;
+                padding: 12px;
+            }
+            .alerts-box, .contacts-box {
+                width: 100%;
+            }
+            .unit-sensors {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo"><span style="font-size:34px; color:#ff7a45;">🏢</span><h1>سیستم امنیتی ایمن‌یار</h1></div>
+        <div class="header-right"><div class="update-note">به‌روز‌رسانی خودکار اطلاعات هر 3 ثانیه</div></div>
+    </div>
+
+    <div class="dashboard">
+        <aside class="alerts-box" id="alerts-box">
+            <h2>🔔 وضعیت هشدار واحدها</h2>
+            <div id="units-container">
+                <!-- واحدها اینجا نمایش داده می‌شوند -->
+            </div>
+        </aside>
+
+        <main class="contacts-box" id="contacts-box">
+            <div class="default-message" id="default-message">
+                <div style="font-size:48px; margin-bottom:15px; color:#aaa;">👆</div>
+                <p>روی واحدها کلیک کنید تا شماره تماس‌ها مشخص شود</p>
+            </div>
+            
+            <div class="unit-details" id="unit-details" style="display: none;">
+                <h3>واحد شماره <span id="unit-id-display"></span></h3>
+                
+                <div class="contact-section">
+                    <h4>تماس‌های ضروری:</h4>
+                    <div class="contact-numbers">
+                        <p class="phone">صاحب واحد: <span id="unit-owner-phone"></span></p>
+                        <p class="phone">اورژانس: 115</p>
+                        <p class="phone">پلیس: 110</p>
+                        <p class="phone">لابی: 09128431761</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const unitPhoneNumbers = {
+            1: "09945466163",
+            2: "09302457558"
+        };
+
+        function updateUnitsDisplay(sensors) {
+            const container = document.getElementById('units-container');
+            const units = processUnits(sensors);
+            
+            let html = '';
+            units.forEach(unit => {
+                html += `
+                    <div class="unit-alert-card ${unit.status}" data-unit="${unit.id}" onclick="showUnitDetails(${unit.id})">
+                        <div class="unit-header">
+                            <div class="unit-id">واحد ${unit.id}</div>
+                            <div class="unit-status ${unit.status}">${getStatusText(unit.status)}</div>
+                        </div>
+                        <div class="unit-sensors">
+                `;
+                
+                unit.sensors.forEach(sensor => {
+                    html += `
+                        <div class="sensor-module ${sensor.status}">
+                            <div class="sensor-icon">
+                                ${getSensorIcon(sensor.name)}
+                            </div>
+                            <div class="sensor-name">${getSensorName(sensor.name)}</div>
+                            <div class="sensor-status ${sensor.status}">${getStatusText(sensor.status)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function getStatusText(status) {
+            if (status === 'red') return 'خطر';
+            if (status === 'orange') return 'اخطار';
+            return 'سالم';
+        }
+
+        function processUnits(sensors) {
+            const unitMap = {};
+            
+            sensors.forEach(sensor => {
+                if (!unitMap[sensor.id]) {
+                    unitMap[sensor.id] = {
+                        id: sensor.id,
+                        sensors: [],
+                        status: 'green'
+                    };
+                }
+                
+                unitMap[sensor.id].sensors.push(sensor);
+                if (sensor.status === 'red') {
+                    unitMap[sensor.id].status = 'red';
+                } else if (sensor.status === 'orange' && unitMap[sensor.id].status !== 'red') {
+                    unitMap[sensor.id].status = 'orange';
+                }
+            });
+            
+            return Object.values(unitMap).sort((a, b) => a.id - b.id);
+        }
+
+        function getSensorIcon(sensorName) {
+            switch(sensorName) {
+                case 'smoke': return '🚭';
+                case 'methane': return '⛽';
+                case 'co': return '☠️';
+                default: return '📡';
+            }
+        }
+
+        function getSensorName(sensorName) {
+            switch(sensorName) {
+                case 'smoke': return 'دود';
+                case 'methane': return 'متان';
+                case 'co': return 'مونوکسید کربن';
+                default: return sensorName;
+            }
+        }
+
+        function showUnitDetails(unitId) {
+            document.getElementById('default-message').style.display = 'none';
+            document.getElementById('unit-details').style.display = 'block';
+            document.getElementById('unit-id-display').textContent = unitId;
+            
+            const ownerPhone = unitPhoneNumbers[unitId] || 'ثبت نشده';
+            document.getElementById('unit-owner-phone').textContent = ownerPhone;
+        }
+
+        function fetchSensorData() {
+            fetch('/api/sensors')
+                .then(response => response.json())
+                .then(data => {
+                    updateUnitsDisplay(data);
+                    setTimeout(fetchSensorData, 3000);
+                })
+                .catch(error => {
+                    console.error('Error fetching sensor data:', error);
+                    setTimeout(fetchSensorData, 3000);
+                });
+        }
+
+        window.addEventListener('load', () => {
+            fetchSensorData();
+        });
+    </script>
+</body>
+</html>
+)rawliteral";
+  return html;
+}
+
+void handleRoot() {
+  server.send(200, "text/html", buildPage());
+}
+
+void handleSensors() {
+  DynamicJsonDocument doc(1024);
+  JsonArray array = doc.to<JsonArray>();
+  
+  unsigned long now = millis();
+  
+  for(int i = 0; i < 6; i++) {
+    JsonObject sensor = array.createNestedObject();
+    sensor["id"] = sensors[i].id;
+    sensor["name"] = sensors[i].name;
+    sensor["quantity"] = sensors[i].quantity;
+    
+
+    if (sensors[i].status == "green") {
+      // پیدا کردن نوع Hazard از نام سنسور
+      Hazard hz;
+      if (sensors[i].name == "smoke") hz = HZ_SMOKE;
+      else if (sensors[i].name == "methane") hz = HZ_METHANE;
+      else if (sensors[i].name == "co") hz = HZ_CO;
+      else hz = HZ_SMOKE;
+      
+
+      if (now - lastClearTime[sensors[i].id][hz] < 10000) {
+        sensor["status"] = "orange";
+      } else {
+        sensor["status"] = "green";
+      }
+    } else {
+      sensor["status"] = sensors[i].status;
+    }
+  }
+  
+  String response;
+  serializeJson(doc, response);
+  server.send(200, "application/json", response);
+}
+
+// ---------- Setup ----------
+void setup(){
+  pinMode(PIN_BUZZ, OUTPUT);
+  pinMode(PIEZO_PIN, OUTPUT);
+  noTone(PIN_BUZZ);
+  noTone(PIEZO_PIN);
+
+  pinMode(LED_R, OUTPUT);
+  pinMode(LED_Y, OUTPUT);
+  pinMode(LED_G, OUTPUT);
+  digitalWrite(LED_R, LOW);
+  digitalWrite(LED_Y, LOW);
+  digitalWrite(LED_G, LOW);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("ImenYar Security");
+  lcd.setCursor(3,1); lcd.print("System Starting.");
+  delay(1300);
+
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("Checking LoRa...");
+  digitalWrite(LED_Y, HIGH);
+
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+  loraOk = LoRa.begin(433E6);
+  if (!loraOk) {
+    lcd.clear();
+    lcd.setCursor(0,0); lcd.print("LoRa FAILED");
+    lcd.setCursor(0,1); lcd.print("check wiring   ");
+    applyLed();
+    for(;;) { buzzerService(); delay(10); }
+  }
+
+  lcd.clear();
+  lcd.setCursor(0,0); lcd.print("LoRa OK  (433)");
+  lcd.setCursor(0,1); lcd.print("central online ");
+  digitalWrite(LED_Y, LOW);
+  digitalWrite(LED_G, LOW);
+  delay(900);
+
+  lcd.clear();
+  updateLCD();
+  applyLed();
+
+
+  for (uint8_t u=0; u<3; u++) {
+    for (int h=0; h<HZ_COUNT; h++){
+      active[u][h] = false;
+      lastAlarmTime[u][h] = 0;
+      lastClearTime[u][h] = 0;
+    }
+  }
+
+  // WiFi AP
+  WiFi.softAP(ap_ssid, ap_password);
+  Serial.begin(115200);
+  Serial.println("Access Point Started");
+  Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+
+  // WebServer
+  server.on("/", handleRoot);
+  server.on("/api/sensors", handleSensors);
+  server.begin();
+}
+
+// ---------- Loop ----------
+void loop(){
+  int packetSize = LoRa.parsePacket();
+  if (packetSize){
+    String msg;
+    while (LoRa.available()) msg += (char)LoRa.read();
+    processMessage(msg);
+  }
+
+  buzzerService();
+  server.handleClient();
+  delay(10);
+}

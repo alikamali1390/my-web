@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ali Kamali - Hardware Engineer</title>
+
+  <!-- Preload CSS -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style">
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style">
+
+  <!-- External CSS -->
+  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-vsc-dark-plus.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg fixed-top">
+    <div class="container">
+      <a class="navbar-brand brand-name" href="#">Ali Kamali</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="#hero">Home</a></li>
+          <li class="nav-item"><a class="nav-link" href="#projects">Projects</a></li>
+          <li class="nav-item"><a class="nav-link" href="#codes">Codes</a></li>
+          <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
+          <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
+          <li class="nav-item">
+            <button class="theme-toggle"><i class="fas fa-moon"></i></button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section id="hero">
+    <div id="particles-js"></div>
+    <div class="container hero-content text-center">
+      <h1 class="hero-title" data-aos="fade-up">Hi, I'm <span class="text-primary">Ali</span></h1>
+      <p class="hero-subtitle" data-aos="fade-up" data-aos-delay="200"><span id="typed"></span></p>
+      <div class="glare-hover" data-aos="fade-up" data-aos-delay="400">
+        <a href="#projects" class="cta-btn">View My Work</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Projects -->
+  <section id="projects" class="py-5">
+    <div class="container">
+        <h2 class="text-center mb-5" data-aos="fade-up">My Projects</h2>
+        <div class="row g-4">
+            <!-- Project 1 -->
+            <div class="col-lg-4 col-md-6" data-aos="fade-up">
+                <div class="project-card" data-tilt>
+                    <img src="assets/img/project1.jpg" class="card-img-top" alt="Project 1" loading="lazy">
+                    <div class="card-body">
+                        <h5 class="card-title">Project 1</h5>
+                        <p class="card-text">Brief description of project 1...</p>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <a href="#" class="btn btn-sm btn-primary me-2">Demo</a>
+                                <a href="#" class="btn btn-sm btn-outline-primary">GitHub</a>
+                            </div>
+                            <a href="projects/project1/index.html" class="read-more-btn">
+                                Read More <i class="fas fa-arrow-right ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project 2 -->
+            <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="100">
+                <div class="project-card" data-tilt>
+                    <img src="assets/img/project2.jpg" class="card-img-top" alt="Project 2" loading="lazy">
+                    <div class="card-body">
+                        <h5 class="card-title">Project 2</h5>
+                        <p class="card-text">Brief description of project 2...</p>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <a href="#" class="btn btn-sm btn-primary me-2">Demo</a>
+                                <a href="#" class="btn btn-sm btn-outline-primary">GitHub</a>
+                            </div>
+                            <a href="projects/project2/index.html" class="read-more-btn">
+                                Read More <i class="fas fa-arrow-right ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project 3 -->
+            <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="200">
+                <div class="project-card" data-tilt>
+                    <img src="assets/img/project3.jpg" class="card-img-top" alt="Project 3" loading="lazy">
+                    <div class="card-body">
+                        <h5 class="card-title">Project 3</h5>
+                        <p class="card-text">Brief description of project 3...</p>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <div>
+                                <a href="#" class="btn btn-sm btn-primary me-2">Demo</a>
+                                <a href="#" class="btn btn-sm btn-outline-primary">GitHub</a>
+                            </div>
+                            <a href="projects/project3/index.html" class="read-more-btn">
+                                Read More <i class="fas fa-arrow-right ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </section>
+
+  <!-- Code Snippets -->
+  <section id="codes" class="py-5">
+    <div class="container">
+        <h2 class="text-center mb-5" data-aos="fade-up">Code Snippets</h2>
+        <div class="code-block" data-aos="fade-up" data-aos-delay="200">
+            <pre class="line-numbers"><code class="language-cpp" id="arduino-code">// Loading code...</code></pre>
+        </div>
+    </div>
+  </section>
+
+  <!-- About -->
+  <section id="about" class="py-5">
+    <div class="container">
+        <h2 class="text-center mb-5" data-aos="fade-up">About Me</h2>
+        <div class="row">
+            <div class="col-lg-8 mx-auto">
+                <div class="bio-content" data-aos="fade-up" data-aos-delay="200">
+                    <pre id="bio-text" class="bio-text">Loading...</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section id="contact" class="py-5">
+    <div class="container">
+      <h2 class="text-center mb-5" data-aos="fade-up">Get In Touch</h2>
+      <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+          <div class="social-icons">
+            <a href="#" class="social-icon"><i class="fab fa-github"></i></a>
+            <a href="#" class="social-icon"><i class="fab fa-linkedin"></i></a>
+            <a href="mailto:ak.dev889@gmail.com" class="social-icon"><i class="fas fa-envelope"></i></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-4 text-center">
+    <div class="container">
+      <div class="mb-3">
+        <a href="mailto:ak.dev889@gmail.com" class="text-decoration-none text-muted">ak.dev889@gmail.com</a>
+      </div>
+      <div class="mb-3">
+        <p class="text-muted">&copy; <span id="year"></span> Ali Kamali. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <div class="scroll-top"><i class="fas fa-arrow-up"></i></div>
+
+  <!-- External JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.12" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.0/dist/vanilla-tilt.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-cpp.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+
+  <!-- Custom JS -->
+  <script src="script.js" defer></script>
+</body>
+</html>
